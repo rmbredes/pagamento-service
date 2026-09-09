@@ -1,0 +1,135 @@
+spring:
+
+  # Nome lógico da aplicação.
+  #
+  # Esse nome poderá aparecer em logs, métricas,
+  # rastreamento distribuído e ferramentas de observabilidade.
+  application:
+    name: pagamento-service
+
+  # Configura o banco exclusivo do microserviço.
+  datasource:
+
+    # A aplicação roda no Windows pelo IntelliJ.
+    #
+    # Por isso utiliza localhost e a porta 5433 publicada
+    # pelo container pagamento-postgres.
+    url: jdbc:postgresql://localhost:5433/pagamentodb
+
+    # Driver JDBC responsável pela comunicação com PostgreSQL.
+    driver-class-name: org.postgresql.Driver
+
+    # Credenciais locais definidas no compose.yaml.
+    username: postgres
+    password: postgres
+
+  # Configura JPA e Hibernate.
+  jpa:
+    hibernate:
+
+      # Durante o laboratório, o Hibernate criará e atualizará
+      # as tabelas conforme nossas entidades Java.
+      #
+      # Futuramente estudaremos Flyway para controlar
+      # as alterações do banco por versões.
+      ddl-auto: update
+
+    # Evita manter a sessão do Hibernate aberta
+    # durante toda a resposta HTTP.
+    open-in-view: false
+
+    # Não mostra todas as consultas SQL no terminal.
+    #
+    # Podemos habilitar temporariamente quando quisermos estudar
+    # uma operação específica.
+    show-sql: true
+
+  # Configura a comunicação com o Kafka local.
+  kafka:
+
+    # O pagamento-service será executado pelo IntelliJ,
+    # fora da rede interna do Docker.
+    bootstrap-servers: localhost:9092
+
+    consumer:
+
+      # Nome do grupo independente do microserviço.
+      #
+      # Estoque, notificação e pagamento terão offsets próprios
+      # e receberão o mesmo PedidoCriadoEvent.
+      group-id: pagamento-service-group
+
+      # Um grupo novo começará pelas mensagens publicadas
+      # depois que ele se conectar.
+      #
+      # Usamos latest para não processar imediatamente todo
+      # o histórico de pedidos existente no laboratório.
+      auto-offset-reset: latest
+
+      # Converte a chave da mensagem Kafka para String.
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+      # Converte o JSON recebido para um objeto Java.
+      # Esta é a implementação baseada no Jackson 3,
+      # compatível com Spring Boot 4 e Spring Kafka 4.
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+
+      properties:
+
+        # O produtor e o consumidor estão em projetos diferentes.
+        #
+        # Ignoramos o nome da classe Java enviado pelo monólito
+        # e utilizaremos a classe equivalente criada localmente.
+        spring.json.use.type.headers: false
+
+        # Informa qual classe do pagamento-service representará
+        # o JSON recebido. Essa classe será criada posteriormente.
+        spring.json.value.default.type: br.com.exemplo.pagamentoservice.event.PedidoCriadoEvent
+
+        # Restringe a desserialização ao pacote conhecido pelo serviço.
+        spring.json.trusted.packages: br.com.exemplo.pagamentoservice.event
+
+    # Configurações do produtor.
+    #
+    # Este produtor publica PagamentoProcessadoEvent
+    # no tópico pagamentos-processados.
+    producer:
+
+      # O ID do pedido será usado como chave em formato de texto.
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+      # Converte o objeto Java para JSON usando Jackson 3.
+      # Não devemos usar o JsonSerializer antigo com Spring Boot 4.
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+
+      properties:
+
+        # Não envia o nome completo da classe Java nos cabeçalhos.
+        # Assim, futuros consumidores não precisam possuir
+        # exatamente o mesmo nome de pacote Java.
+        spring.json.add.type.headers: false
+
+# Utiliza uma porta diferente da aplicação principal,
+# que permanece disponível em localhost:8080.
+server:
+  port: 8081
+
+# Configura inicialmente somente os endpoints operacionais essenciais.
+management:
+  endpoints:
+    web:
+      exposure:
+
+        # Health informa se a aplicação e suas dependências estão disponíveis.
+        # Info poderá apresentar informações gerais.
+        # Metrics permitirá estudar as métricas do novo serviço.
+        include: health,info,metrics
+
+  endpoint:
+    health:
+
+      # Exibe os componentes individuais no nosso ambiente de estudos.
+      show-components: always
+
+      # Exibe detalhes como o tipo do banco e a validação da conexão.
+      show-details: always

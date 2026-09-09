@@ -1,0 +1,49 @@
+services:
+
+  # PostgreSQL exclusivo do microserviço de pagamentos.
+  pagamento-postgres:
+
+    # Versão utilizada no ambiente local de estudos.
+    image: postgres:17
+
+    # Nome previsível para identificar o container no Docker.
+    container_name: pagamento-postgres
+
+    environment:
+
+      # Banco criado automaticamente na primeira inicialização.
+      POSTGRES_DB: pagamentodb
+
+      # Credenciais simples utilizadas somente no laboratório local.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+    ports:
+
+      # Porta 5433 no Windows encaminhada para a porta
+      # padrão 5432 dentro do container PostgreSQL.
+      - "5433:5432"
+
+    volumes:
+
+      # Volume exclusivo que preserva os pagamentos
+      # mesmo quando o container for recriado.
+      - pagamento-postgres-data:/var/lib/postgresql/data
+
+    healthcheck:
+
+      # Verifica se o banco já está aceitando conexões.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pagamentodb"]
+
+      # Executa a verificação a cada cinco segundos.
+      interval: 5s
+
+      # Limita cada tentativa a três segundos.
+      timeout: 3s
+
+      # Considera o serviço indisponível após dez falhas.
+      retries: 10
+
+# Declara o volume persistente exclusivo do pagamento-service.
+volumes:
+  pagamento-postgres-data:
