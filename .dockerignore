@@ -1,0 +1,17 @@
+# Arquivos internos do Git não precisam entrar
+# no contexto enviado ao Docker.
+.git
+.gitignore
+
+# Configurações das IDEs não pertencem à imagem.
+.idea
+*.iml
+.vscode
+
+# Arquivos de documentação e sistema operacional.
+HELP.md
+.DS_Store
+
+# Logs locais não devem ser enviados para a imagem.
+logs
+*.log

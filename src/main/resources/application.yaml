@@ -10,18 +10,16 @@ spring:
   # Configura o banco exclusivo do microserviço.
   datasource:
 
-    # A aplicação roda no Windows pelo IntelliJ.
-    #
-    # Por isso utiliza localhost e a porta 5433 publicada
-    # pelo container pagamento-postgres.
-    url: jdbc:postgresql://localhost:5433/pagamentodb
+    # A variável DB_URL poderá substituir o endereço quando a
+    # aplicação estiver dentro de um container.
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/pagamentodb}
 
-    # Driver JDBC responsável pela comunicação com PostgreSQL.
     driver-class-name: org.postgresql.Driver
 
-    # Credenciais locais definidas no compose.yaml.
-    username: postgres
-    password: postgres
+    # Na ausência das variáveis, permanecem as credenciais
+    # simples do nosso laboratório local.
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
 
   # Configura JPA e Hibernate.
   jpa:
@@ -47,9 +45,9 @@ spring:
   # Configura a comunicação com o Kafka local.
   kafka:
 
-    # O pagamento-service será executado pelo IntelliJ,
-    # fora da rede interna do Docker.
-    bootstrap-servers: localhost:9092
+    # Pela IDE, utiliza localhost.
+    # No Docker, o endereço será fornecido externamente.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
     consumer:
 
@@ -112,7 +110,8 @@ spring:
 # Utiliza uma porta diferente da aplicação principal,
 # que permanece disponível em localhost:8080.
 server:
-  port: 8081
+  # Permite trocar a porta interna sem modificar o código.
+  port: ${SERVER_PORT:8081}
 
 # Configura inicialmente somente os endpoints operacionais essenciais.
 management:
