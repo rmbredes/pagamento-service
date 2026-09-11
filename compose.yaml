@@ -2,118 +2,77 @@ services:
 
   # Aplicação Spring Boot responsável pelos pagamentos.
   pagamento-service:
-
-    # Solicita que o Compose construa a imagem usando
-    # os arquivos existentes no diretório atual.
     build:
-
-      # Define a pasta enviada como contexto para o Docker.
       context: .
-
-      # Indica explicitamente o arquivo com a receita da imagem.
       dockerfile: Dockerfile
 
-    # Nome atribuído à imagem construída.
     image: pagamento-service:local
-
-    # Nome previsível para identificar o container em execução.
     container_name: pagamento-service-app
 
     environment:
-
-      # Dentro da rede Docker, o banco é localizado pelo nome
-      # do serviço e por sua porta interna 5432.
       DB_URL: jdbc:postgresql://pagamento-postgres:5432/pagamentodb
-
-      # Credenciais simples do nosso laboratório.
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
 
-      # Mantém a porta interna padrão da aplicação.
       SERVER_PORT: 8081
 
-      # Agora o consumer Kafka deve iniciar normalmente.
       SPRING_KAFKA_LISTENER_AUTO_STARTUP: "true"
-
-      # Usa o nome do serviço Kafka e sua porta interna.
-      #
-      # Não usamos localhost porque Kafka está em outro container.
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
 
     ports:
-
-      # Porta 8081 no Windows encaminhada para a porta
-      # 8081 dentro do container da aplicação.
       - "8081:8081"
 
     depends_on:
-
-      # A aplicação será iniciada somente depois que o healthcheck
-      # do PostgreSQL indicar que ele aceita conexões.
       pagamento-postgres:
         condition: service_healthy
 
-    # A aplicação participa de duas redes:
-    #
-    # - default: conversa com seu PostgreSQL;
-    # - recomeco-network: conversa com o Kafka compartilhado.
+    # Participa da rede privada do pagamento e da rede compartilhada.
     networks:
-      - default
-      - recomeco-network
-  # PostgreSQL exclusivo do microserviço de pagamentos.
+      - pagamento-network
+      - recomeco-network-pagamento
+
+
+  # PostgreSQL exclusivo do pagamento-service.
   pagamento-postgres:
-
-    # Uma única imagem postgres:17 pode originar
-    # vários containers de banco independentes.
     image: postgres:17
-
-    # Nome previsível para identificar o container.
     container_name: pagamento-postgres
 
     environment:
-
-      # Banco criado na primeira inicialização do volume.
       POSTGRES_DB: pagamentodb
-
-      # Credenciais simples utilizadas somente no laboratório.
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
 
     ports:
-
-      # A porta externa 5433 permite que IntelliJ e DBeaver
-      # acessem o banco pelo Windows.
-      #
-      # Entre containers, o pagamento-service utiliza a porta 5432.
       - "5433:5432"
 
     volumes:
-
-      # Preserva os dados quando o container for recriado.
       - pagamento-postgres-data:/var/lib/postgresql/data
 
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d pagamentodb" ]
-
-      # Executa a verificação a cada cinco segundos.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pagamentodb"]
       interval: 5s
-
-      # Limita cada tentativa a três segundos.
       timeout: 3s
-
-      # Considera o banco indisponível depois de dez falhas.
       retries: 10
 
+    # O banco participa somente da rede privada.
+    networks:
+      - pagamento-network
 
-# Declara o volume persistente do banco de pagamentos.
+
 volumes:
-  pagamento-postgres-data:
 
-# A rede foi criada e administrada pelo Compose
-# do ProjetoSpringBoot.
-#
-# external informa que este Compose apenas utilizará
-# uma rede que já existe.
+  # Nome físico fixo, independente do projeto Compose utilizado.
+  pagamento-postgres-data:
+    name: recomeco-stack-local_pagamento-postgres-data
+
+
 networks:
-  recomeco-network:
+
+  # Rede privada entre pagamento-service e pagamento-postgres.
+  pagamento-network:
+
+  # Este nome lógico é exclusivo dentro do arquivo.
+  # O campo name aponta para a rede real compartilhada.
+  recomeco-network-pagamento:
+    name: recomeco-network
     external: true
