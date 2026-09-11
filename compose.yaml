@@ -93,11 +93,7 @@ services:
       - pagamento-postgres-data:/var/lib/postgresql/data
 
     healthcheck:
-
-      # Verifica se o PostgreSQL está aceitando conexões.
-      test:
-        - CMD-SHELL
-        - pg_isready -U postgres -d pagamentodb
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d pagamentodb" ]
 
       # Executa a verificação a cada cinco segundos.
       interval: 5s
