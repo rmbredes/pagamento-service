@@ -1,10 +1,15 @@
 // Pipeline do pagamento-service executada pelo Jenkins.
 pipeline {
 
-    // Utiliza o mesmo agente Windows com Java 21
-    // já configurado para o ProjetoSpringBoot.
+    // Utiliza o agente Windows com Java 21.
     agent {
         label 'windows && java21'
+    }
+
+    // Evita o checkout automático do Jenkins.
+    // Faremos um único checkout, de forma explícita.
+    options {
+        skipDefaultCheckout(true)
     }
 
     // Solicita ao Jenkins a instalação cadastrada do JDK 21.
@@ -15,16 +20,21 @@ pipeline {
     // Configurações reutilizadas pelos stages.
     environment {
 
-        // Região onde criamos o repositório ECR.
-        AWS_REGION = 'sa-east-1'
+        // Caminho completo da AWS CLI instalada para o usuário Ricardo.
+        AWS_CLI = 'C:\\Users\\Ricardo\\AppData\\Local\\Programs\\Amazon\\AWSCLIV2\\aws.exe'
 
-        // Perfil configurado localmente no Windows.
+        // Faz a AWS CLI procurar o cache do "aws login"
+        // e os arquivos .aws no perfil do usuário Ricardo.
+        HOME = 'C:\\Users\\Ricardo'
+        USERPROFILE = 'C:\\Users\\Ricardo'
+        AWS_CONFIG_FILE = 'C:\\Users\\Ricardo\\.aws\\config'
+
+        // Perfil que assume a role usada no laboratório.
         AWS_PROFILE = 'projeto-s3'
 
-        // Registro privado pertencente à nossa conta AWS.
+        // Região e endereço do ECR.
+        AWS_REGION = 'sa-east-1'
         ECR_REGISTRY = '033649548808.dkr.ecr.sa-east-1.amazonaws.com'
-
-        // Repositório específico do pagamento-service.
         ECR_REPOSITORY = 'recomeco/pagamento-service'
     }
 
@@ -43,7 +53,7 @@ pipeline {
             }
         }
 
-        // Confirma as ferramentas disponíveis no agente.
+        // Confirma as ferramentas e os arquivos necessários.
         stage('Verificar ambiente') {
 
             steps {
@@ -51,7 +61,26 @@ pipeline {
                 bat 'java -version'
                 bat 'echo JAVA_HOME=%JAVA_HOME%'
                 bat 'docker --version'
-                bat 'aws --version'
+
+                // Interrompe claramente caso o executável não exista.
+                bat '''
+                    if not exist "%AWS_CLI%" (
+                        echo AWS CLI nao encontrada em: %AWS_CLI%
+                        exit /b 1
+                    )
+                '''
+
+                // Interrompe caso o arquivo de configuração não exista.
+                bat '''
+                    if not exist "%AWS_CONFIG_FILE%" (
+                        echo Configuracao AWS nao encontrada em: %AWS_CONFIG_FILE%
+                        exit /b 1
+                    )
+                '''
+
+                // Usa o caminho completo, pois a AWS CLI não está
+                // no PATH da conta LocalSystem.
+                bat '"%AWS_CLI%" --version'
             }
         }
 
@@ -60,7 +89,6 @@ pipeline {
 
             steps {
 
-                // clean verify já executa os testes e produz o pacote.
                 bat 'call mvnw.cmd clean verify'
             }
         }
@@ -72,15 +100,13 @@ pipeline {
 
                 // --pull procura uma versão atualizada da imagem-base.
                 //
-                // BUILD_NUMBER é o número gerado pelo Jenkins
-                // para identificar esta execução.
+                // BUILD_NUMBER identifica esta execução do Jenkins.
                 bat '''
                     docker build --pull ^
                         --tag pagamento-service:%BUILD_NUMBER% ^
                         .
                 '''
 
-                // Confirma que a imagem foi criada.
                 bat 'docker image inspect pagamento-service:%BUILD_NUMBER%'
             }
         }
@@ -91,8 +117,7 @@ pipeline {
             steps {
 
                 bat '''
-                    aws sts get-caller-identity ^
-                        --profile %AWS_PROFILE%
+                    "%AWS_CLI%" sts get-caller-identity --profile %AWS_PROFILE%
                 '''
             }
         }
@@ -102,13 +127,10 @@ pipeline {
 
             steps {
 
+                // A senha temporária segue diretamente da AWS CLI
+                // para o Docker; ela não é gravada em arquivo.
                 bat '''
-                    aws ecr get-login-password ^
-                        --region %AWS_REGION% ^
-                        --profile %AWS_PROFILE% ^
-                    | docker login ^
-                        --username AWS ^
-                        --password-stdin %ECR_REGISTRY%
+                    "%AWS_CLI%" ecr get-login-password --region %AWS_REGION% --profile %AWS_PROFILE% | docker login --username AWS --password-stdin %ECR_REGISTRY%
                 '''
             }
         }
