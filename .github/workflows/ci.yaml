@@ -1,0 +1,58 @@
+# Nome exibido na aba Actions do GitHub.
+name: CI - Java e Docker
+
+# Situações que iniciam automaticamente o workflow.
+on:
+
+  # Executa quando houver push na master ou na nossa branch atual.
+  push:
+    branches:
+      - master
+      - feature/github-actions-ci
+
+  # Executa quando uma Pull Request apontar para a master.
+  pull_request:
+    branches:
+      - master
+
+# O workflow precisa apenas ler o conteúdo do repositório.
+permissions:
+  contents: read
+
+jobs:
+
+  # Nome interno do trabalho executado pelo GitHub Actions.
+  build:
+
+    # Máquina Linux temporária fornecida pelo GitHub.
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # Baixa o pagamento-service para a máquina temporária.
+      - name: Baixar código
+        uses: actions/checkout@v6
+
+      # Instala o Java 21 e habilita o cache das dependências Maven.
+      - name: Configurar Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # No Linux, o Maven Wrapper precisa ter permissão de execução.
+      - name: Preparar Maven Wrapper
+        run: chmod +x mvnw
+
+      # Compila, executa os quatro testes e gera o arquivo JAR.
+      - name: Testar e gerar pacote
+        run: ./mvnw clean verify
+
+      # Usa o Dockerfile do projeto para validar a criação da imagem.
+      #
+      # github.sha identifica a imagem com o hash exato do commit.
+      # Neste momento a imagem é apenas construída; ainda não será
+      # enviada para Docker Hub ou Amazon ECR.
+      - name: Construir imagem Docker
+        run: docker build --tag pagamento-service:${{ github.sha }} .
