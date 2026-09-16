@@ -1,27 +1,38 @@
 # Nome exibido na aba Actions do GitHub.
-name: CI - Java e Docker
+name: CI - Java, Docker e Amazon ECR
 
 # Situações que iniciam automaticamente o workflow.
 on:
 
-  # Executa quando houver push na master ou na nossa branch atual.
+  # Executa ao enviar commits para a master ou para a branch de implementação.
   push:
     branches:
       - master
-      - feature/github-actions-ci
+      - feature/github-actions-ecr
 
   # Executa quando uma Pull Request apontar para a master.
   pull_request:
     branches:
       - master
 
-# O workflow precisa apenas ler o conteúdo do repositório.
+# Permissões concedidas ao workflow.
 permissions:
+
+  # Permite baixar o código do repositório.
   contents: read
+
+  # Permite que o GitHub gere um token OIDC.
+  # Esse token será trocado por credenciais temporárias da AWS.
+  id-token: write
+
+# Valores reutilizados em diferentes passos do workflow.
+env:
+  AWS_REGION: sa-east-1
+  AWS_ROLE_ARN: arn:aws:iam::033649548808:role/GitHubActionsEcrRecomecoRole
+  ECR_REPOSITORY: recomeco/pagamento-service
 
 jobs:
 
-  # Nome interno do trabalho executado pelo GitHub Actions.
   build:
 
     # Máquina Linux temporária fornecida pelo GitHub.
@@ -45,14 +56,50 @@ jobs:
       - name: Preparar Maven Wrapper
         run: chmod +x mvnw
 
-      # Compila, executa os quatro testes e gera o arquivo JAR.
+      # Compila, executa os testes e gera o arquivo JAR.
       - name: Testar e gerar pacote
         run: ./mvnw clean verify
 
-      # Usa o Dockerfile do projeto para validar a criação da imagem.
+      # Constrói a imagem usando a versão mais recente da imagem-base.
       #
-      # github.sha identifica a imagem com o hash exato do commit.
-      # Neste momento a imagem é apenas construída; ainda não será
-      # enviada para Docker Hub ou Amazon ECR.
+      # github.sha identifica a imagem local com o commit exato
+      # que iniciou esta execução.
       - name: Construir imagem Docker
-        run: docker build --tag pagamento-service:${{ github.sha }} .
+        run: docker build --pull --tag pagamento-service:${{ github.sha }} .
+
+      # Os passos seguintes executam somente em um push para a master.
+      # Uma Pull Request apenas testa e constrói a imagem.
+      - name: Obter credenciais temporárias da AWS
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: pagamento-service-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Usa as credenciais temporárias para autenticar o Docker no ECR.
+      - name: Autenticar Docker no Amazon ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Adiciona duas tags e envia a imagem:
+      #
+      # latest:
+      # aponta para a versão mais recente da master.
+      #
+      # sha-<commit>:
+      # identifica exatamente o código que produziu a imagem.
+      - name: Publicar imagem no Amazon ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+
+          docker tag pagamento-service:${COMMIT_SHA} "${IMAGE_URI}:latest"
+          docker tag pagamento-service:${COMMIT_SHA} "${IMAGE_URI}:sha-${COMMIT_SHA}"
+
+          docker push "${IMAGE_URI}:latest"
+          docker push "${IMAGE_URI}:sha-${COMMIT_SHA}"
